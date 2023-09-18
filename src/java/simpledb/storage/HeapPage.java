@@ -21,12 +21,14 @@ public class HeapPage implements Page {
 
     final HeapPageId pid;
     final TupleDesc td;
+    //头部字段，标志某个槽是否被使用
     final byte[] header;
     final Tuple[] tuples;
     final int numSlots;
 
     byte[] oldData;
     private final Byte oldDataLock= (byte) 0;
+    TransactionId dirty;
 
     /**
      * Create a HeapPage from a set of bytes of data read from disk.
@@ -73,7 +75,7 @@ public class HeapPage implements Page {
     */
     private int getNumTuples() {        
         // some code goes here
-        return 0;
+        return (int) Math.floor((BufferPool.getPageSize() * 8 * 1.0) / (td.getSize() * 8 + 1));
 
     }
 
@@ -84,7 +86,7 @@ public class HeapPage implements Page {
     private int getHeaderSize() {        
         
         // some code goes here
-        return 0;
+        return (int) Math.ceil(getNumTuples()/8.0);
                  
     }
     
@@ -118,7 +120,7 @@ public class HeapPage implements Page {
      */
     public HeapPageId getId() {
     // some code goes here
-    throw new UnsupportedOperationException("implement this");
+    return pid;
     }
 
     /**
@@ -251,6 +253,11 @@ public class HeapPage implements Page {
     public void deleteTuple(Tuple t) throws DbException {
         // some code goes here
         // not necessary for lab1
+        if(!t.getRecordId().getPageId().equals(pid)||!t.getTupleDesc().equals(td)) throw new DbException("Delete tuple not in this page");
+        int tupleNumber = t.getRecordId().getTupleNumber();
+        if(!isSlotUsed(tupleNumber))throw new DbException("Delete empty tuple");
+        markSlotUsed(tupleNumber,false);
+        tuples[tupleNumber] = null;
     }
 
     /**
@@ -263,6 +270,16 @@ public class HeapPage implements Page {
     public void insertTuple(Tuple t) throws DbException {
         // some code goes here
         // not necessary for lab1
+        if(getNumEmptySlots()==0 || !t.getTupleDesc().equals(td)) throw new DbException("Insert Error");
+        for(int i=0;i<numSlots;i++) {
+            if(!isSlotUsed(i)) {
+                t.setRecordId(new RecordId(pid,i));
+                tuples[i] = t;
+                markSlotUsed(i,true);
+                return ;
+            }
+        }
+
     }
 
     /**
@@ -272,6 +289,9 @@ public class HeapPage implements Page {
     public void markDirty(boolean dirty, TransactionId tid) {
         // some code goes here
 	// not necessary for lab1
+        if(!dirty)this.dirty = null;
+        else this.dirty = tid;
+
     }
 
     /**
@@ -280,7 +300,7 @@ public class HeapPage implements Page {
     public TransactionId isDirty() {
         // some code goes here
 	// Not necessary for lab1
-        return null;      
+        return dirty;
     }
 
     /**
@@ -288,7 +308,14 @@ public class HeapPage implements Page {
      */
     public int getNumEmptySlots() {
         // some code goes here
-        return 0;
+        int res = 0;
+        for(int i=0;i<getHeaderSize();i++) {
+            byte head = header[i];
+            for(int j=0;j<8;j++) {
+                if(((head>>j)&1) == 0)res+=1;
+            }
+        }
+        return res;
     }
 
     /**
@@ -296,7 +323,11 @@ public class HeapPage implements Page {
      */
     public boolean isSlotUsed(int i) {
         // some code goes here
-        return false;
+        int by = i/8;
+        int bi = i%8;
+        if (by>=getHeaderSize())return false;
+        return ((header[by]>>bi)&1)==1;
+
     }
 
     /**
@@ -305,6 +336,12 @@ public class HeapPage implements Page {
     private void markSlotUsed(int i, boolean value) {
         // some code goes here
         // not necessary for lab1
+        int by = i/8;
+        int bi = i%8;
+        if(value) {
+            header[by]|= 1<<bi;
+        }
+        else header[by] &= ~(1<<bi);
     }
 
     /**
@@ -313,7 +350,13 @@ public class HeapPage implements Page {
      */
     public Iterator<Tuple> iterator() {
         // some code goes here
-        return null;
+        ArrayList<Tuple> tupleList = new ArrayList<>();
+        for(int i=0;i<getNumTuples();i++) {
+            if (isSlotUsed(i)) {
+                tupleList.add(tuples[i]);
+            }
+        }
+        return tupleList.iterator();
     }
 
 }

@@ -8,7 +8,7 @@ import java.io.*;
 /**
  * Instance of Field that stores a single String of a fixed length.
  */
-public class StringField implements Field {
+public class  StringField implements Field {
 
 	private static final long serialVersionUID = 1L;
 
